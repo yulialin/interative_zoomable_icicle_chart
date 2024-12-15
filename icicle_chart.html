@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Icicle Chart</title>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <h1>Interactive Icicle Chart</h1>
+    <label for="color-picker">Pick a Color:</label>
+    <input type="color" id="color-picker" value="#665191">
+    <div id="chart"></div>
+
+    <script>
+        const sheetUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQWfsRxLmqPkJH_Pd9SlFHociJBq2e81Ry0x31VHV1DUkncuz2rHZQFePSVW3RmQ0Owgb-lbdlKLMF7/pub?output=csv";
+
+        fetch(sheetUrl)
+            .then(response => response.text())
+            .then(csv => {
+                const rawData = d3.csvParse(csv);
+                const columnNames = rawData.columns;
+                const hierarchicalData = convertToHierarchy(rawData, columnNames);
+                renderChart(hierarchicalData, columnNames.length);
+            });
+
+        function convertToHierarchy(data, columnNames) {
+            const hierarchy = { name: "All Data", children: [] };
+
+            data.forEach(row => {
+                let currentLevel = hierarchy;
+
+                columnNames.forEach(column => {
+                    if (row[column]) {
+                        let child = currentLevel.children.find(c => c.name === row[column]);
+                        if (!child) {
+                            child = { name: row[column], children: [] };
+                            currentLevel.children.push(child);
+                        }
+                        currentLevel = child;
+                    }
+                });
+            });
+
+            return hierarchy;
+        }
+
+        function renderChart(data, maxDepth) {
+            const width = 960;
+            const height = 500;
+
+            const svg = d3.select("#chart")
+                .append("svg")
+                .attr("viewBox", [0, 0, width, height])
+                .attr("width", width)
+                .attr("height", height)
+                .style("font", "10px sans-serif");
+
+            const partition = d3.partition()
+                .size([height, width]);
+
+            const root = d3.hierarchy(data)
+                .sum(d => d.children && d.children.length > 0 ? 0 : 1)
+                .sort((a, b) => b.height - a.height || b.value - a.value);
+
+            partition(root);
+
+            const chartGroup = svg.append("g");
+
+            const cell = chartGroup.selectAll("g")
+                .data(root.descendants())
+                .join("g")
+                .attr("transform", d => `translate(${d.y0},${d.x0})`);
+
+            const rect = cell.append("rect")
+                .attr("width", d => d.y1 - d.y0 - 1)
+                .attr("height", d => rectHeight(d))
+                .attr("fill-opacity", 0.6)
+                .attr("fill", d => d.depth === 3 ? "red" : d3.interpolateBlues(d.depth / maxDepth))
+                .style("stroke", "#fff")
+                .style("cursor", "pointer")
+                .on("click", clicked);
+
+            const text = cell.append("text")
+                .style("user-select", "none")
+                .attr("pointer-events", "none")
+                .attr("x", 4)
+                .attr("y", 13)
+                .attr("fill-opacity", d => +labelVisible(d))
+                .text(d => d.data.name);
+
+            const tspan = text.append("tspan")
+                .attr("fill-opacity", d => labelVisible(d) * 0.7)
+                .text(d => ` ${format(d.value)}`);
+
+            cell.append("title")
+                .text(d => `${d.ancestors().map(d => d.data.name).reverse().join("/")}\n${format(d.value)}`);
+
+            let focus = root;
+
+            function clicked(event, p) {
+                if (focus === p) {
+                    p = p.parent;
+                }
+                if (!p) return;
+                focus = p;
+
+                root.each(d => d.target = {
+                    x0: (d.x0 - p.x0) / (p.x1 - p.x0) * height,
+                    x1: (d.x1 - p.x0) / (p.x1 - p.x0) * height,
+                    y0: d.y0 - p.y0,
+                    y1: d.y1 - p.y0
+                });
+
+                const t = cell.transition().duration(750)
+                    .attr("transform", d => `translate(${d.target.y0},${d.target.x0})`);
+
+                rect.transition(t).attr("height", d => rectHeight(d.target));
+                text.transition(t).attr("fill-opacity", d => +labelVisible(d.target));
+                tspan.transition(t).attr("fill-opacity", d => labelVisible(d.target) * 0.7);
+            }
+
+            function rectHeight(d) {
+                return d.x1 - d.x0 - Math.min(1, (d.x1 - d.x0) / 2);
+            }
+
+            function labelVisible(d) {
+                return d.y1 <= width && d.y0 >= 0 && d.x1 - d.x0 > 16;
+            }
+
+            function format(value) {
+                return d3.format(",d")(value);
+            }
+
+            document.getElementById("color-picker").addEventListener("input", event => {
+                const newColor = event.target.value;
+                const updatedColorScale = generateColorScale(newColor, maxDepth);
+
+                rect.attr("fill", d => d.depth === 3 ? "red" : updatedColorScale(d.depth));
+            });
+        }
+
+        function generateColorScale(baseColor, maxDepth) {
+            const lightColor = d3.rgb(baseColor).brighter(2).toString();
+            const darkColor = d3.rgb(baseColor).darker(2).toString();
+            return d3.scaleLinear()
+                .domain([0, maxDepth])
+                .range([lightColor, darkColor]);
+        }
+    </script>
+</body>
+</html>
+
+
+
+
+
