@@ -11,3 +11,4 @@ What I added:
   * Flagging feature, make cells that have been flagged stand out in conditional formatting style 
 
     
+<img width="1156" alt="Screenshot 2025-02-25 at 2 46 34 PM" src="https://github.com/user-attachments/assets/d7c8e8e8-83ab-42fa-8e07-ae60072658e0" />
